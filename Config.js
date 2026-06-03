@@ -26,7 +26,7 @@ var CONFIG = {
   GEMINI_ENDPOINT_BASE: 'https://generativelanguage.googleapis.com/v1beta/models',
   GEMINI_MODEL: 'gemini-2.5-flash-lite',
   OPENAI_ENDPOINT: 'https://api.openai.com/v1/responses',
-  OPENAI_MODEL: 'gpt-4.1-mini'
+  OPENAI_MODEL: 'gpt-5-mini'
 };
 
 var JOB_COLUMNS = {
