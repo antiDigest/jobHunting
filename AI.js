@@ -150,7 +150,7 @@ function scoreSingleJobWithGemini_(company, jobTitle, jobUrl, jobDescriptionText
   return jobs[0]; // Return the single scored job
 }
 
-function extractAndScoreJobsWithAI_(company, careerPageText, settings) {
+function extractJobLinksWithAI_(company, careerPageText, settings) {
   debugLog_('ai', 'Starting job link extraction', {
     company: company.name,
     person: company.person,
@@ -195,9 +195,56 @@ function extractJobLinksWithOpenAI_(company, careerPageText, settings) {
 }
 
 function scoreSingleJobWithOpenAI_(company, jobTitle, jobUrl, jobDescriptionText, settings) {
-  // Implement OpenAI fallback for single job scoring
-  debugLog_('openai', 'Falling back to OpenAI for single job scoring (not implemented)', { company: company.name });
-  throw new Error('OpenAI fallback for single job scoring not implemented.');
+  debugLog_('openai', 'Falling back to OpenAI for single job scoring', { company: company.name, jobTitle: jobTitle });
+  
+  var apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  var candidate = getCandidateSettings_(company.person, settings);
+  
+  var payload = {
+    model: CONFIG.OPENAI_MODEL,
+    messages: [
+      { role: 'user', content: buildAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, candidate) }
+    ],
+    response_format: { type: 'json_object' }
+  };
+  
+  var response = UrlFetchApp.fetch(CONFIG.OPENAI_ENDPOINT, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      Authorization: 'Bearer ' + apiKey
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  
+  var status = response.getResponseCode();
+  var body = response.getContentText();
+  
+  if (status === 429) {
+    var err = new Error('OpenAI rate limited');
+    err.pauseScan = true;
+    err.provider = 'openai';
+    err.status = status;
+    throw err;
+  }
+  
+  if (status < 200 || status >= 300) {
+    var err = new Error('OpenAI (single job) failed: HTTP ' + status + ' ' + body.slice(0, 500));
+    err.provider = 'openai';
+    err.status = status;
+    throw err;
+  }
+  
+  var json = JSON.parse(body);
+  // Need a way to parse this response based on OpenAI structure, similar to how extractAndScoreJobsWithOpenAI_ does it
+  var content = json.choices[0].message.content;
+  var jobs = parseJobMatches_(content, 'OpenAI');
+  
+  if (jobs.length !== 1) {
+    throw new Error('OpenAI returned ' + jobs.length + ' jobs for a single job scoring request. Expected 1.');
+  }
+  return jobs[0]; // Return the single scored job
 }
 
 function scoreSingleJobWithAI_(company, jobTitle, jobUrl, jobDescriptionText, settings) {
@@ -246,15 +293,15 @@ function buildAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, can
   var lines = [
     'Analyze the following single job description and score it based on the candidate profile.',
     'SCORING PROCESS (STRICT):',
-    '1. Extract the 10 most important technical and functional keywords from THIS job description.',
-    '2. Compare these 10 keywords ONLY against the "Strong matching keywords" listed in the candidate profile below.',
+    '1. Extract all important technical and functional keywords from THIS job description.',
+    '2. Compare these keywords ONLY against the "Strong matching keywords" listed in the candidate profile below.',
     '3. Calculate the score (1-10) based strictly on this keyword overlap:',
-    '   - 10: Perfect match (8-10 keywords match).',
-    '   - 8: Strong match (6-7 keywords match).',
-    '   - 6: Moderate match (4-5 keywords match).',
-    '   - 4: Weak match (2-3 keywords match).',
-    '   - 2 or lower: Little to no match (0-1 keywords match).',
-    '4. DO NOT give high scores (8+) unless there is concrete keyword evidence. Be stingy with high scores.',
+    '   - 10: Perfect match (all keywords match).',
+    '   - 8: Strong match (75%+ keywords match).',
+    '   - 6: Moderate match (50%+ keywords match).',
+    '   - 4: Weak match (30%+ keywords match).',
+    '   - 2 or lower: Little to no match (less than 20% keywords match).',
+    '4. DO NOT give high scores (8+) unless there is concrete keyword evidence.',
     '5. In the "reason" field, list the matching keywords found.',
     '',
     'Candidate name:',

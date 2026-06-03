@@ -93,15 +93,22 @@ function processScanChunk_() {
     try {
       decodoRequestsThisChunk++;
       var pageText = scrapeCareerPageWithDecodo_(company.url);
-      var analyzedJobs = extractAndScoreJobsWithAI_(company, pageText, settings);
+      var jobLinks = extractJobLinksWithAI_(company, pageText, settings); // Returns list of job links
 
-      analyzedJobs.forEach(function(job) {
+      jobLinks.forEach(function(job) {
         var normalizedUrl = normalizeUrl_(job.url || company.url);
         var key = makeJobKey_(company.person, company.targetRole, company.name, job.title, normalizedUrl);
 
         if (existingKeys.has(key)) return;
 
-        var score = Number(job.score || 0);
+        // Fetch description for each job link
+        decodoRequestsThisChunk++;
+        var jobDescriptionText = scrapeCareerPageWithDecodo_(job.url);
+        
+        // Score job individually
+        var analyzedJob = scoreSingleJobWithAI_(company, job.title, job.url, jobDescriptionText, settings);
+
+        var score = Number(analyzedJob.score || 0);
         var priority = score >= CONFIG.MIN_SCORE_TO_EMAIL ? 'HIGH' : 'NORMAL';
 
         rowsToAppend.push([
@@ -109,13 +116,13 @@ function processScanChunk_() {
           company.person,
           company.targetRole,
           company.name,
-          job.title || '',
+          analyzedJob.title || '',
           normalizedUrl,
-          job.location || '',
-          job.description || '',
+          analyzedJob.location || '',
+          analyzedJob.description || '',
           score,
           priority,
-          job.reason || '',
+          analyzedJob.reason || '',
           key
         ]);
 
