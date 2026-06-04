@@ -159,16 +159,11 @@ function writeScanState_(status, cursor, message) {
   }
 
   var row = [new Date(), status, cursor, message || ''];
-  debugLog_('scan-state', 'Writing scan state row', {
+  debugLog_('scan-state', 'Appending scan state row', {
     status: status,
     cursor: cursor,
     message: message || ''
   });
 
-  if (sheet.getLastRow() < 2) {
-    sheet.appendRow(row);
-    return;
-  }
-
-  sheet.getRange(2, 1, 1, row.length).setValues([row]);
+  sheet.appendRow(row);
 }

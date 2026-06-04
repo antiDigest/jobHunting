@@ -157,94 +157,32 @@ function extractJobLinksWithAI_(company, careerPageText, settings) {
     careerPageChars: careerPageText.length
   });
 
-  var jobLinks = [];
   try {
-    jobLinks = extractJobLinksWithGemini_(company, careerPageText, settings);
-  } catch (err) {
-    if (!isGeminiRateLimitError_(err)) {
-      debugLog_('ai', 'Gemini job links extraction failed with non-rate-limit error', {
-        company: company.name,
-        error: String(err && err.message ? err.message : err)
-      });
-      throw err;
-    }
-
-    debugLog_('ai', 'Gemini job links extraction rate limited, falling back to OpenAI', {
+    var jobLinks = extractJobLinksWithGemini_(company, careerPageText, settings);
+    debugLog_('ai', 'Extracted job links', {
       company: company.name,
-      person: company.person,
-      status: err.status
+      count: jobLinks.length
     });
-    jobLinks = extractJobLinksWithOpenAI_(company, careerPageText, settings);
-  }
-
-  debugLog_('ai', 'Extracted job links', {
-    company: company.name,
-    count: jobLinks.length
-  });
-
-  // This function now primarily returns job links. The actual scraping and scoring for individual jobs will happen in Main.js processScanChunk_.
-  return jobLinks;
-}
-
-
-
-function extractJobLinksWithOpenAI_(company, careerPageText, settings) {
-  // Implement OpenAI fallback for job link extraction
-  debugLog_('openai', 'Falling back to OpenAI for job link extraction (not implemented)', { company: company.name });
-  throw new Error('OpenAI fallback for job link extraction not implemented.');
-}
-
-function scoreSingleJobWithOpenAI_(company, jobTitle, jobUrl, jobDescriptionText, settings) {
-  debugLog_('openai', 'Falling back to OpenAI for single job scoring', { company: company.name, jobTitle: jobTitle });
-  
-  var apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
-  var candidate = getCandidateSettings_(company.person, settings);
-  
-  var payload = {
-    model: CONFIG.OPENAI_MODEL,
-    messages: [
-      { role: 'user', content: buildAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, candidate) }
-    ],
-    response_format: { type: 'json_object' }
-  };
-  
-  var response = UrlFetchApp.fetch(CONFIG.OPENAI_ENDPOINT, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      Authorization: 'Bearer ' + apiKey
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  });
-  
-  var status = response.getResponseCode();
-  var body = response.getContentText();
-  
-  if (status === 429) {
-    var err = new Error('OpenAI rate limited');
-    err.pauseScan = true;
-    err.provider = 'openai';
-    err.status = status;
+    return jobLinks;
+  } catch (err) {
+    if (isGeminiRateLimitError_(err)) {
+      debugLog_('ai', 'Gemini job links extraction rate limited', {
+        company: company.name,
+        person: company.person,
+        status: err.status
+      });
+      // Throw pause error to Main.js to pause the scan
+      var pauseErr = new Error('Gemini job links extraction rate limited');
+      pauseErr.pauseScan = true;
+      throw pauseErr;
+    }
+    
+    debugLog_('ai', 'Gemini job links extraction failed with non-rate-limit error', {
+      company: company.name,
+      error: String(err && err.message ? err.message : err)
+    });
     throw err;
   }
-  
-  if (status < 200 || status >= 300) {
-    var err = new Error('OpenAI (single job) failed: HTTP ' + status + ' ' + body.slice(0, 500));
-    err.provider = 'openai';
-    err.status = status;
-    throw err;
-  }
-  
-  var json = JSON.parse(body);
-  // Need a way to parse this response based on OpenAI structure, similar to how extractAndScoreJobsWithOpenAI_ does it
-  var content = json.choices[0].message.content;
-  var jobs = parseJobMatches_(content, 'OpenAI');
-  
-  if (jobs.length !== 1) {
-    throw new Error('OpenAI returned ' + jobs.length + ' jobs for a single job scoring request. Expected 1.');
-  }
-  return jobs[0]; // Return the single scored job
 }
 
 function scoreSingleJobWithAI_(company, jobTitle, jobUrl, jobDescriptionText, settings) {
@@ -254,26 +192,28 @@ function scoreSingleJobWithAI_(company, jobTitle, jobUrl, jobDescriptionText, se
     jobUrl: jobUrl,
     descriptionChars: jobDescriptionText.length
   });
-  var candidate = getCandidateSettings_(company.person, settings);
+  
   try {
-    var geminiScore = scoreSingleJobWithGemini_(company, jobTitle, jobUrl, jobDescriptionText, settings);
-    return geminiScore;
+    return scoreSingleJobWithGemini_(company, jobTitle, jobUrl, jobDescriptionText, settings);
   } catch (err) {
-    if (!isGeminiRateLimitError_(err)) {
-      debugLog_('ai', 'Gemini single job scoring failed with non-rate-limit error', {
+    if (isGeminiRateLimitError_(err)) {
+      debugLog_('ai', 'Gemini single job scoring rate limited', {
         company: company.name,
         jobTitle: jobTitle,
-        error: String(err && err.message ? err.message : err)
+        status: err.status
       });
-      throw err;
+      // Throw pause error to Main.js to pause the scan
+      var pauseErr = new Error('Gemini single job scoring rate limited');
+      pauseErr.pauseScan = true;
+      throw pauseErr;
     }
 
-    debugLog_('ai', 'Gemini single job scoring rate limited, falling back to OpenAI', {
+    debugLog_('ai', 'Gemini single job scoring failed with non-rate-limit error', {
       company: company.name,
       jobTitle: jobTitle,
-      status: err.status
+      error: String(err && err.message ? err.message : err)
     });
-    return scoreSingleJobWithOpenAI_(company, jobTitle, jobUrl, jobDescriptionText, settings);
+    throw err;
   }
 }
 
