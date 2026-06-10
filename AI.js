@@ -29,7 +29,11 @@ function extractJobLinksWithGemini_(company, pageText, settings) {
   ].join('');
 
   var prompt = [
-    'Extract all current job listings from the following career page content. For each job, return its title and the absolute URL to its individual job posting. If no specific URL is found for a job, use the career page URL itself.',
+    'Extract all current job listings from the following career page content.',
+    'For each job, return its title and the URL.',
+    'IMPORTANT: The URL MUST be a full, absolute URL.',
+    'If the URL on the page is relative (e.g., "/jobs/123"), you MUST prepend the provided "Career URL" to make it absolute.',
+    'If you cannot find a specific link for a job, use the "Career URL".',
     '',
     'Company: ' + company.name,
     'Career URL: ' + company.url,
@@ -104,7 +108,7 @@ function scoreSingleJobWithGemini_(company, jobTitle, jobUrl, jobDescriptionText
       {
         parts: [
           {
-            text: buildAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, candidate)
+            text: buildSingleJobAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, candidate)
           }
         ]
       }
@@ -161,7 +165,8 @@ function extractJobLinksWithAI_(company, careerPageText, settings) {
     var jobLinks = extractJobLinksWithGemini_(company, careerPageText, settings);
     debugLog_('ai', 'Extracted job links', {
       company: company.name,
-      count: jobLinks.length
+      count: jobLinks.length,
+      links: jobLinks.map(function(j) { return j.url; })
     });
     return jobLinks;
   } catch (err) {
@@ -229,97 +234,42 @@ function isAIRateLimitPauseError_(err) {
   return err && err.pauseScan === true;
 }
 
-function buildAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, candidate) {
-  var lines = [
-    'Analyze the following single job description and score it based on the candidate profile.',
-    'SCORING PROCESS (STRICT):',
-    '1. Extract all important technical and functional keywords from THIS job description.',
-    '2. Compare these keywords ONLY against the "Strong matching keywords" listed in the candidate profile below.',
-    '3. Calculate the score (1-10) based strictly on this keyword overlap:',
-    '   - 10: Perfect match (all keywords match).',
-    '   - 8: Strong match (75%+ keywords match).',
-    '   - 6: Moderate match (50%+ keywords match).',
-    '   - 4: Weak match (30%+ keywords match).',
-    '   - 2 or lower: Little to no match (less than 20% keywords match).',
-    '4. DO NOT give high scores (8+) unless there is concrete keyword evidence.',
-    '5. In the "reason" field, list the matching keywords found.',
-    '',
-    'Candidate name:',
-    company.person,
-    '',
-    'Candidate profile (including "Strong matching keywords"):',
-    candidate.profile,
-    '',
-    'Exact target role from the sheet (for context, but primary matching is keyword-based):',
-    company.targetRole,
-    '',
-    'Preferences:',
-    candidate.preferences,
-    '',
-    'Company: ' + company.name,
-    'Job Title: ' + jobTitle,
-    'Job URL: ' + jobUrl,
-    '',
-    'Job Description Content:',
-    jobDescriptionText
+function buildSingleJobAnalysisPrompt_(company, jobTitle, jobUrl, jobDescriptionText, candidate) {
+  var rules = [
+    'Score 1-10: 10=Perf(100% keywords), 8=Strong(75%), 6=Mod(50%), 4=Weak(30%), 2=Poor(<20%).',
+    'Evidence-based only. In "reason", list matching keywords found.',
   ];
-
   if (isAntriksh_(company.person)) {
-    lines.splice(2, 0,
-      'STRICT RULES FOR ANTRIKSH:',
-      '- Consider only the job title and description provided here.',
-      '- Return roles only when title strongly matches the exact target role family; reject adjacent/non-matching families.',
-      '- Return roles only when description/responsibilities clearly align with Antriksh profile strengths (backend/platform/distributed systems/cloud/infrastructure).',
-      '- If title fit is weak OR description-to-profile evidence is weak, the overall score should be low (4 or less).'
-    );
+    rules.push('Antriksh Rules: Only match strong title family alignment and specific profile strengths (backend/platform/infra).');
   }
 
+  var lines = [
+    'Analyze role for: ' + company.person,
+    'Target Role: ' + company.targetRole,
+    'Profile/Strong Keywords: ' + candidate.profile,
+    'Rules: ' + rules.join(' '),
+    '---',
+    'Company: ' + company.name,
+    'Job: ' + jobTitle,
+    'Description: ' + jobDescriptionText
+  ];
   return lines.join('\n');
 }
 
-function buildAnalysisPrompt_(company, pageText, candidate) {
+function buildCareerPageExtractionPrompt_(company, pageText, candidate) {
   var lines = [
-    'Extract only real current job listings from this career page.',
-    'Ignore navigation links, benefits pages, expired jobs, generic pages, and roles that are not actual openings.',
-    '',
-    'SCORING PROCESS (STRICT):',
-    '1. For each role, extract the 10 most important technical and functional keywords from its description.',
-    '2. Compare these 10 keywords ONLY against the "Strong matching keywords" listed in the candidate profile below.',
-    '3. Calculate the score (1-10) based strictly on this keyword overlap:',
-    '   - 10: Perfect match (8-10 keywords match).',
-    '   - 8: Strong match (6-7 keywords match).',
-    '   - 6: Moderate match (4-5 keywords match).',
-    '   - 4: Weak match (2-3 keywords match).',
-    '   - 2 or lower: Little to no match (0-1 keywords match).',
-    '4. DO NOT give high scores (8+) unless there is concrete keyword evidence. Be stingy with high scores.',
-    '5. In the "reason" field, list the matching keywords found.',
-    '',
-    'Candidate name:',
-    company.person,
-    '',
-    'Candidate profile (including "Strong matching keywords"):',
-    candidate.profile,
-    '',
-    'Exact target role from the sheet:',
-    company.targetRole,
-    '',
-    'Preferences:',
-    candidate.preferences,
-    '',
+    'Extract current job listings. Return title, URL.',
+    'Scoring: 10=Perf, 8=Strong, 6=Mod, 4=Weak, 2=Poor.',
+    'Candidate: ' + company.person,
+    'Target: ' + company.targetRole,
+    'Profile: ' + candidate.profile,
+    '---',
     'Company: ' + company.name,
-    'Career URL: ' + company.url,
-    '',
-    'Career page content:',
-    pageText
+    'Content: ' + pageText
   ];
 
   if (isAntriksh_(company.person)) {
-    lines.splice(2, 0,
-      'STRICT RULES FOR ANTRIKSH:',
-      '- Return roles only when title strongly matches the exact target role family; reject adjacent/non-matching families.',
-      '- Return roles only when description/responsibilities clearly align with Antriksh profile strengths (backend/platform/distributed systems/cloud/infrastructure).',
-      '- If title fit is weak OR description-to-profile evidence is weak, exclude that role entirely.'
-    );
+    lines.splice(1, 0, 'Antriksh Rules: Only return roles with strong title match and infrastructure/cloud alignment.');
   }
 
   return lines.join('\n');
@@ -334,8 +284,18 @@ function getCandidateSettings_(person, settings) {
     throw new Error('Missing Settings profile for person "' + person + '". Expected key: ' + key + 'Profile');
   }
 
+  // Extract keywords
+  var keywords = '';
+  var match = profile.match(/Strong matching keywords:\s*([\s\S]*?)(?:\n\n|\n[A-Z]|$)/i);
+  if (match && match[1]) {
+    keywords = match[1].trim();
+  } else {
+    // Fallback: send full profile if keywords not found
+    keywords = profile;
+  }
+
   return {
-    profile: profile,
+    profile: keywords,
     preferences: preferences
   };
 }

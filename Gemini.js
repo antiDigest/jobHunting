@@ -14,7 +14,7 @@ function extractAndScoreJobsWithGemini_(company, pageText, settings) {
       {
         parts: [
           {
-            text: buildAnalysisPrompt_(company, pageText, candidate)
+            text: buildCareerPageExtractionPrompt_(company, pageText, candidate)
           }
         ]
       }

@@ -126,18 +126,26 @@ function validatePersonAlertEmail_(settings, personKey) {
   }
 }
 
-function getExistingJobKeys_(sheet) {
+function getExistingJobData_(sheet) {
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return new Set();
+  if (lastRow < 2) return { keys: new Set(), urls: new Set() };
 
-  var keys = sheet
-    .getRange(2, JOB_COLUMNS.UNIQUE_KEY, lastRow - 1, 1)
-    .getValues()
-    .flat();
+  var data = sheet
+    .getRange(2, 1, lastRow - 1, JOB_COLUMNS.UNIQUE_KEY)
+    .getValues();
 
-  var keySet = new Set(keys.filter(Boolean).map(String));
-  debugLog_('sheets', 'Loaded existing job keys', { count: keySet.size });
-  return keySet;
+  var keys = new Set();
+  var urls = new Set();
+
+  data.forEach(function(row) {
+    var key = row[JOB_COLUMNS.UNIQUE_KEY - 1];
+    var url = row[JOB_COLUMNS.URL - 1];
+    if (key) keys.add(String(key));
+    if (url) urls.add(normalizeUrl_(String(url)));
+  });
+
+  debugLog_('sheets', 'Loaded existing job keys and urls', { keys: keys.size, urls: urls.size });
+  return { keys: keys, urls: urls };
 }
 
 function appendJobRows_(sheet, rows) {

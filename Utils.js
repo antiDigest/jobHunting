@@ -1,3 +1,20 @@
+function resolveUrl_(baseUrl, relativeUrl) {
+  if (!relativeUrl) return baseUrl;
+  if (relativeUrl.startsWith('http')) return relativeUrl;
+  
+  // Simple resolution: handle both absolute-path relative URLs (/jobs) 
+  // and relative-path relative URLs (jobs/123)
+  var base = baseUrl.split('?')[0].split('#')[0];
+  if (!base.endsWith('/')) base += '/';
+  
+  if (relativeUrl.startsWith('/')) {
+      var matches = base.match(/^(https?:\/\/[^\/]+)/);
+      if (matches) return matches[1] + relativeUrl;
+  }
+  
+  return base + relativeUrl.replace(/^\.\//, '');
+}
+
 function makeJobKey_(person, targetRole, company, title, url) {
   return [
     String(person || '').toLowerCase().trim(),

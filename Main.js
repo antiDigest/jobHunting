@@ -74,7 +74,7 @@ function processScanChunk_() {
     return;
   }
 
-  var existingKeys = getExistingJobKeys_(jobsSheet);
+  var existingData = getExistingJobData_(jobsSheet);
   var rowsToAppend = [];
   var processedThisChunk = 0;
   var decodoRequestsThisChunk = 0;
@@ -96,17 +96,19 @@ function processScanChunk_() {
       var jobLinks = extractJobLinksWithAI_(company, pageText, settings); // Returns list of job links
 
       jobLinks.forEach(function(job) {
-        var normalizedUrl = normalizeUrl_(job.url || company.url);
+        var absoluteUrl = resolveUrl_(company.url, job.url);
+        var normalizedUrl = normalizeUrl_(absoluteUrl);
         var key = makeJobKey_(company.person, company.targetRole, company.name, job.title, normalizedUrl);
 
-        if (existingKeys.has(key)) return;
+        // Deduplication check: Key OR URL
+        if (existingData.keys.has(key) || existingData.urls.has(normalizedUrl)) return;
 
         // Fetch description for each job link
         decodoRequestsThisChunk++;
-        var jobDescriptionText = scrapeCareerPageWithDecodo_(job.url);
+        var jobDescriptionText = scrapeCareerPageWithDecodo_(normalizedUrl);
         
         // Score job individually
-        var analyzedJob = scoreSingleJobWithAI_(company, job.title, job.url, jobDescriptionText, settings);
+        var analyzedJob = scoreSingleJobWithAI_(company, job.title, normalizedUrl, jobDescriptionText, settings);
 
         var score = Number(analyzedJob.score || 0);
         var priority = score >= CONFIG.MIN_SCORE_TO_EMAIL ? 'HIGH' : 'NORMAL';
@@ -126,7 +128,8 @@ function processScanChunk_() {
           key
         ]);
 
-        existingKeys.add(key);
+        existingData.keys.add(key);
+        existingData.urls.add(normalizedUrl);
         stats.newJobs++;
         if (priority === 'HIGH') stats.highPriority++;
       });

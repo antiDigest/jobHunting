@@ -3,7 +3,7 @@ function extractAndScoreJobsWithOpenAI_(company, pageText, settings) {
   var candidate = getCandidateSettings_(company.person, settings);
   var payload = {
     model: CONFIG.OPENAI_MODEL,
-    input: buildAnalysisPrompt_(company, pageText, candidate),
+    input: buildCareerPageExtractionPrompt_(company, pageText, candidate),
     text: {
       format: {
         type: 'json_schema',
