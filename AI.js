@@ -31,9 +31,9 @@ function extractJobLinksWithGemini_(company, pageText, settings) {
   var prompt = [
     'Extract all current job listings from the following career page content.',
     'For each job, return its title and the URL.',
-    'IMPORTANT: The URL MUST be a full, absolute URL.',
+    'IMPORTANT: Only return jobs that have a specific, unique URL to the posting.',
+    'DO NOT return jobs if a specific URL is missing or if you have to guess/fallback to the "Career URL" itself.',
     'If the URL on the page is relative (e.g., "/jobs/123"), you MUST prepend the provided "Career URL" to make it absolute.',
-    'If you cannot find a specific link for a job, use the "Career URL".',
     '',
     'Company: ' + company.name,
     'Career URL: ' + company.url,

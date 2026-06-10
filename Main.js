@@ -96,6 +96,9 @@ function processScanChunk_() {
       var jobLinks = extractJobLinksWithAI_(company, pageText, settings); // Returns list of job links
 
       jobLinks.forEach(function(job) {
+        // Skip if no unique URL is provided (AI should be skipping these, but add a fallback filter)
+        if (!job.url || job.url === company.url) return;
+
         var absoluteUrl = resolveUrl_(company.url, job.url);
         var normalizedUrl = normalizeUrl_(absoluteUrl);
         var key = makeJobKey_(company.person, company.targetRole, company.name, job.title, normalizedUrl);
